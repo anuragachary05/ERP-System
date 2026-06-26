@@ -11,11 +11,19 @@ const studentRoutes = require('./routes/student');
 // Load .env from repository root if present (server runs with different cwd in some setups)
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
+const fs = require('fs');
 connectDB();
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// Ensure uploads directory exists
+const uploadsDir = path.resolve(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);

@@ -8,12 +8,14 @@ import CreateUserForm from '../components/CreateUserForm';
 import CreateClassForm from '../components/CreateClassForm';
 import CreateScheduleForm from '../components/CreateScheduleForm';
 import EnrollStudentForm from '../components/EnrollStudentForm';
+import CreateNoticeForm from '../components/CreateNoticeForm';
 
 function AdminDashboard() {
   const user = getCurrentUser();
   const navigate = useNavigate();
   const [usersRefreshKey, setUsersRefreshKey] = useState(0);
   const [classesRefreshKey, setClassesRefreshKey] = useState(0);
+  const [noticesRefreshKey, setNoticesRefreshKey] = useState(0);
 
   const handleLogout = () => {
     logout();
@@ -37,11 +39,12 @@ function AdminDashboard() {
       <CreateClassForm onCreated={() => setClassesRefreshKey((prev) => prev + 1)} />
       <CreateScheduleForm onCreated={() => setClassesRefreshKey((prev) => prev + 1)} />
       <EnrollStudentForm onEnrollSuccess={() => setClassesRefreshKey((prev) => prev + 1)} />
+      <CreateNoticeForm onCreated={() => setNoticesRefreshKey((prev) => prev + 1)} />
       <UsersManagement refreshKey={usersRefreshKey} />
       <ClassesSchedule path="/api/admin/classes" refreshKey={classesRefreshKey} />
-      <NoticesList path="/api/admin/notices" refreshKey={classesRefreshKey} />
+      <NoticesList path="/api/admin/notices" refreshKey={noticesRefreshKey} />
 
-      <button onClick={handleLogout}>Logout</button>
+      <button className="logout-btn" onClick={handleLogout}>Logout</button>
     </div>
   );
 }

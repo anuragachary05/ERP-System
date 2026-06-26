@@ -41,10 +41,59 @@ router.post('/assignments', async (req, res) => {
 
 router.get('/assignments', async (req, res) => {
   try {
-    const assignments = await Assignment.find({ createdBy: req.user.id }).sort({ createdAt: -1 });
+    const assignments = await Assignment.find({ createdBy: req.user.id })
+      .populate('class', 'name code')
+      .populate('submissions.student', 'name studentRoll email')
+      .sort({ createdAt: -1 });
     res.json(assignments);
   } catch (error) {
     res.status(500).json({ message: 'Unable to load assignments' });
+  }
+});
+
+router.post('/assignments/:assignmentId/submissions/:studentId/grade', async (req, res) => {
+  const { assignmentId, studentId } = req.params;
+  const { grade, feedback } = req.body;
+
+  try {
+    if (grade === undefined || grade === null) {
+      return res.status(400).json({ message: 'Grade is required' });
+    }
+
+    const score = Number(grade);
+    if (isNaN(score)) {
+      return res.status(400).json({ message: 'Grade must be a number' });
+    }
+
+    const assignment = await Assignment.findOne({
+      _id: assignmentId,
+      createdBy: req.user.id
+    });
+
+    if (!assignment) {
+      return res.status(404).json({ message: 'Assignment not found' });
+    }
+
+    const submission = assignment.submissions.find(
+      (s) => (s.student ? s.student.toString() : '') === studentId.toString()
+    );
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found for this student' });
+    }
+
+    submission.grade = score;
+    submission.feedback = feedback || '';
+
+    await assignment.save();
+
+    const updatedAssignment = await Assignment.findById(assignmentId)
+      .populate('class', 'name code')
+      .populate('submissions.student', 'name studentRoll email');
+
+    res.json({ message: 'Grade submitted successfully', assignment: updatedAssignment });
+  } catch (error) {
+    res.status(500).json({ message: 'Unable to submit grade', error: error.message });
   }
 });
 

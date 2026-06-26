@@ -1,10 +1,37 @@
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
 const Attendance = require('../models/Attendance');
 const Result = require('../models/Result');
 const Assignment = require('../models/Assignment');
 const Notice = require('../models/Notice');
 const Class = require('../models/Class');
 const { authenticate, authorize } = require('../middleware/auth');
+
+// Setup multer storage for assignment submissions
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.resolve(__dirname, '../../uploads'));
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${req.params.assignmentId}-${req.user.id}-${Date.now()}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedExtensions = ['.pdf', '.docx', '.doc', '.png', '.jpg', '.jpeg', '.gif', '.zip'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedExtensions.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Supported types: PDF, DOCX, Images, and ZIP files.'));
+    }
+  }
+});
 
 const router = express.Router();
 router.use(authenticate, authorize('student'));
@@ -93,12 +120,68 @@ router.get('/schedule', async (req, res) => {
 
 router.get('/assignments', async (req, res) => {
   try {
-    // For now return assignments for all classes; can be filtered per student later
-    const assignments = await Assignment.find().sort({ createdAt: -1 });
+    // Find classes where student is enrolled
+    const classes = await Class.find({ 'students.student': req.user.id });
+    const classIds = classes.map(c => c._id);
+
+    // Find assignments for these classes
+    const assignments = await Assignment.find({ class: { $in: classIds } })
+      .populate('class', 'name code')
+      .populate('createdBy', 'name')
+      .sort({ createdAt: -1 });
+
     res.json(assignments);
   } catch (error) {
     res.status(500).json({ message: 'Unable to load assignments' });
   }
+});
+
+router.post('/assignments/:assignmentId/submit', (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ message: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ message: 'Please upload a file' });
+    }
+
+    try {
+      const { assignmentId } = req.params;
+      const assignment = await Assignment.findById(assignmentId);
+      if (!assignment) {
+        return res.status(404).json({ message: 'Assignment not found' });
+      }
+
+      // Check if student has already submitted. If so, update the existing submission, otherwise add new.
+      const studentIdStr = req.user.id.toString();
+      const submissionIndex = assignment.submissions.findIndex(
+        (s) => (s.student ? s.student.toString() : '') === studentIdStr
+      );
+
+      const fileUrl = `/uploads/${req.file.filename}`;
+
+      if (submissionIndex > -1) {
+        // Update existing submission
+        assignment.submissions[submissionIndex].fileUrl = fileUrl;
+        assignment.submissions[submissionIndex].submittedAt = new Date();
+        // Reset grade and feedback on re-submission
+        assignment.submissions[submissionIndex].grade = undefined;
+        assignment.submissions[submissionIndex].feedback = undefined;
+      } else {
+        // Create new submission
+        assignment.submissions.push({
+          student: req.user.id,
+          submittedAt: new Date(),
+          fileUrl,
+        });
+      }
+
+      await assignment.save();
+      res.json({ message: 'Assignment submitted successfully', fileUrl });
+    } catch (error) {
+      res.status(500).json({ message: 'Unable to submit assignment', error: error.message });
+    }
+  });
 });
 
 router.get('/notices', async (req, res) => {
